@@ -1,249 +1,266 @@
 import streamlit as st
 import requests
 import pandas as pd
+from datetime import datetime
+from typing import List, Dict, Any
 
-# Configure page
-st.set_page_config(page_title="Crop Management System", page_icon="🌾", layout="wide")
-
-# API Base URL
+# --- CONFIGURATION ---
 API_BASE_URL = "http://localhost:8000"
 
-
-# Helper function for API calls
-def api_call(method, endpoint, data=None):
-    url = f"{API_BASE_URL}{endpoint}"
-    try:
-        if method == "GET":
-            response = requests.get(url)
-        elif method == "POST":
-            response = requests.post(url, json=data)
-        elif method == "PUT":
-            response = requests.put(url, json=data)
-        elif method == "DELETE":
-            response = requests.delete(url)
-        return response.status_code, response.json() if response.text else {}
-    except Exception as e:
-        return None, {"error": str(e)}
-
-
-# Main header
-st.title("🌾 Crop Management System")
-
-# Sidebar navigation
-page = st.sidebar.selectbox(
-    "Navigate:", ["Dashboard", "Farmers", "Buyers", "Crops", "Orders"]
+st.set_page_config(
+    page_title="Simplified Crop Marketplace",
+    layout="wide",
 )
 
-# Dashboard
-if page == "Dashboard":
-    col1, col2, col3 = st.columns(3)
 
-    # Get counts
-    _, farmers = api_call("GET", "/farmers/")
-    _, buyers = api_call("GET", "/buyers/")
-    _, crops = api_call("GET", "/crops/available")
+# --- UTILITY FUNCTIONS ---
 
-    col1.metric("Farmers", len(farmers.get("data", [])))
-    col2.metric("Buyers", len(buyers.get("data", [])))
-    col3.metric("Available Crops", len(crops.get("data", [])))
 
-    # Show available crops
-    if crops.get("data"):
-        st.subheader("Available Crops")
-        df = pd.DataFrame(crops["data"])
-        st.dataframe(
-            df[["crop_name", "available_quantity", "price_per_unit", "unit"]],
-            use_container_width=True,
+def api_call(method, endpoint, json_data: Dict[str, Any] = None):
+    """Generic function to handle API requests."""
+    url = f"{API_BASE_URL}{endpoint}"
+    try:
+        response = requests.request(method, url, json=json_data, timeout=10)
+
+        if response.status_code >= 400:
+            error_detail = response.json().get(
+                "detail", f"Status {response.status_code}"
+            )
+            st.error(f"API Error: {error_detail}")
+            return {"Success": False, "error": error_detail}
+
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Connection Error: Could not connect to API at {API_BASE_URL}")
+        st.warning(
+            "Please ensure your FastAPI backend is running: uvicorn api.main:app --reload --port 8000"
+        )
+        return {"Success": False, "error": str(e)}
+
+
+# --- HELPER FOR NESTED DATA EXTRACTION (FINAL FIX) ---
+
+
+def get_nested_crop_detail(row_data, key: str) -> str:
+    """
+    Safely extracts a value from the nested 'crops' object,
+    """
+    if isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
+        return row_data[0].get(key, "N/A")
+    elif isinstance(row_data, dict):
+        return row_data.get(key, "N/A")
+    return "N/A"
+
+
+# --- APPLICATION LAYOUT ---
+
+st.title("🌾 Simple Crop Marketplace")
+st.markdown("A direct-to-consumer platform for crop listing and purchasing.")
+
+tab1, tab2, tab3 = st.tabs(["🛒 Buy Crops", "👨‍🌾 List a Crop", "📦 View All Orders"])
+
+# ====================================================================
+# --- TAB 1: BUY CROPS (DISCOVERY & PURCHASE) ---
+# ====================================================================
+
+with tab1:
+    st.subheader("Available Crops for Purchase")
+
+    crops_response = api_call("GET", "/crops/available")
+
+    if crops_response and crops_response.get("Success") and crops_response.get("data"):
+        crops = crops_response["data"]
+        df = pd.DataFrame(crops)
+
+        # --- COLUMN RENAMING ---
+        df.rename(
+            columns={
+                "crop_name": "Crop Name",
+                "available_quantity": "Available",
+                "price_per_unit": "Price/Unit",
+                "id": "Crop ID",
+                "farmer_name": "Seller",
+                "unit": "Unit",
+            },
+            inplace=True,
         )
 
-# Farmers page
-elif page == "Farmers":
-    tab1, tab2 = st.tabs(["Register", "Manage"])
+        # Display available crops
+        st.dataframe(
+            df[
+                [
+                    "Crop ID",
+                    "Crop Name",
+                    "Seller",
+                    "Available",
+                    "Unit",
+                    "Price/Unit",
+                    "description",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
-    with tab1:
-        with st.form("farmer_form"):
-            name = st.text_input("Name")
-            email = st.text_input("Email")
-            contact = st.text_input("Contact")
+        st.divider()
+        st.subheader("Place an Order")
 
-            if st.form_submit_button("Register Farmer"):
-                if name and email and contact:
-                    status, response = api_call(
-                        "POST",
-                        "/farmers/register",
-                        {"name": name, "email": email, "contact_number": contact},
-                    )
-                    if status == 200:
-                        st.success("Farmer registered successfully!")
-                    else:
-                        st.error(f"Error: {response.get('detail', 'Unknown error')}")
+        purchase_col1, purchase_col2, purchase_col3 = st.columns(3)
 
-    with tab2:
-        status, farmers = api_call("GET", "/farmers/")
-        if farmers.get("data"):
-            df = pd.DataFrame(farmers["data"])
-            st.dataframe(df, use_container_width=True)
+        # --- User/Crop Selection Setup ---
+        crop_options = {
+            f"{row['Crop Name']} ({row['Crop ID']}) - ${row['Price/Unit']}/{row['Unit']}": row[
+                "Crop ID"
+            ]
+            for index, row in df.iterrows()
+        }
 
-# Buyers page
-elif page == "Buyers":
-    tab1, tab2 = st.tabs(["Register", "Manage"])
+        selected_crop = None
+        price_per_unit = 0.0
+        available = 0.0
 
-    with tab1:
-        with st.form("buyer_form"):
-            name = st.text_input("Name")
-            email = st.text_input("Email")
-            contact = st.text_input("Contact")
+        with purchase_col1:
+            buyer_name = st.text_input("Your Name", key="buyer_name_input")
+            buyer_contact = st.text_input("Your Contact No.", key="buyer_contact_input")
 
-            if st.form_submit_button("Register Buyer"):
-                if name and email and contact:
-                    status, response = api_call(
-                        "POST",
-                        "/buyers/register",
-                        {"name": name, "email": email, "contact_number": contact},
-                    )
-                    if status == 200:
-                        st.success("Buyer registered successfully!")
-                    else:
-                        st.error(f"Error: {response.get('detail', 'Unknown error')}")
+        with purchase_col2:
+            selected_label = st.selectbox(
+                "Select Crop to Buy", list(crop_options.keys())
+            )
+            selected_crop_id = crop_options.get(selected_label)
 
-    with tab2:
-        status, buyers = api_call("GET", "/buyers/")
-        if buyers.get("data"):
-            df = pd.DataFrame(buyers["data"])
-            st.dataframe(df, use_container_width=True)
+            if selected_crop_id:
+                selected_crop = df[df["Crop ID"] == selected_crop_id].iloc[0]
+                price_per_unit = selected_crop["Price/Unit"]
+                available = selected_crop["Available"]
 
-# Crops page
-elif page == "Crops":
-    tab1, tab2 = st.tabs(["Add Crop", "Manage"])
+        with purchase_col3:
+            if selected_crop is not None:
+                quantity = st.number_input(
+                    f"Quantity to Purchase ({selected_crop['Unit']})",
+                    min_value=0.01,
+                    max_value=float(available),
+                    step=1.0,
+                    key="purchase_quantity",
+                )
+                estimated_total = quantity * price_per_unit
+                st.info(f"Total Price: **${estimated_total:,.2f}**")
+            else:
+                quantity = 0.0
 
-    with tab1:
-        # Get farmers for dropdown
-        _, farmers = api_call("GET", "/farmers/")
-        if farmers.get("data"):
-            farmer_df = pd.DataFrame(farmers["data"])
-            farmer_options = {
-                f"{row['name']} (ID: {row['id']})": row["id"]
-                for _, row in farmer_df.iterrows()
-            }
+            # Purchase Button
+            if st.button("Confirm Purchase", type="primary"):
+                if not buyer_name or not buyer_contact:
+                    st.error("Please enter your Name and Contact details.")
+                elif quantity <= 0:
+                    st.error("Quantity must be greater than zero.")
+                elif selected_crop is None:
+                    st.error("Please select a crop.")
+                else:
+                    purchase_data = {
+                        "crop_id": int(selected_crop_id),
+                        "buyer_name": buyer_name,
+                        "buyer_contact": buyer_contact,
+                        "quantity_purchased": quantity,
+                        "price_per_unit": price_per_unit,
+                    }
+                    response = api_call("POST", "/orders/purchase", purchase_data)
+                    if response and response.get("order_status") == "Success":
+                        st.success("🎉 Purchase successful! Stock updated.")
+                    st.rerun()
 
-            with st.form("crop_form"):
-                farmer = st.selectbox("Select Farmer", list(farmer_options.keys()))
-                crop_name = st.text_input("Crop Name")
-                description = st.text_area("Description")
-                quantity = st.number_input("Quantity", min_value=0.01)
-                price = st.number_input("Price per Unit", min_value=0.01)
-                unit = st.selectbox("Unit", ["kg", "tons", "bags", "pieces", "liters"])
+    else:
+        st.info("No available crops listed in the marketplace.")
 
-                if st.form_submit_button("Add Crop"):
-                    if farmer and crop_name and quantity and price:
-                        data = {
-                            "farmer_id": farmer_options[farmer],
-                            "crop_name": crop_name,
-                            "description": description,
-                            "available_quantity": quantity,
-                            "price_per_unit": price,
-                            "unit": unit,
-                        }
-                        status, response = api_call("POST", "/crops/", data)
-                        if status == 200:
-                            st.success("Crop added successfully!")
-                        else:
-                            st.error(
-                                f"Error: {response.get('detail', 'Unknown error')}"
-                            )
+# ====================================================================
+# --- TAB 2: LIST A CROP ---
+# ====================================================================
+
+with tab2:
+    st.subheader("Add a New Crop Listing")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        farmer_name = st.text_input("Your Name (Farmer)", key="farmer_name_input")
+        farmer_contact = st.text_input("Your Contact No.", key="farmer_contact_input")
+        crop_name = st.text_input("Crop Name", placeholder="e.g., Organic Tomatoes")
+    with col_b:
+        available_quantity = st.number_input(
+            "Available Quantity", min_value=0.01, step=1.0
+        )
+        price_per_unit = st.number_input(
+            "Price per Unit (USD)", min_value=0.01, step=0.1
+        )
+        unit = st.text_input("Unit of Measure", placeholder="e.g., kg, dozen, bushel")
+
+    description = st.text_area("Description (Optional)", max_chars=500)
+
+    if st.button("Submit New Listing", type="secondary"):
+        if not all([farmer_name, crop_name, available_quantity, price_per_unit, unit]):
+            st.error(
+                "Please fill in all required fields (Name, Crop, Quantity, Price, Unit)."
+            )
         else:
-            st.warning("Please register farmers first.")
-
-    with tab2:
-        status, crops = api_call("GET", "/crops/available")
-        if crops.get("data"):
-            df = pd.DataFrame(crops["data"])
-            st.dataframe(df, use_container_width=True)
-
-# Orders page
-elif page == "Orders":
-    tab1, tab2 = st.tabs(["Make Purchase", "View Orders"])
-
-    with tab1:
-        # Get buyers and crops
-        _, buyers = api_call("GET", "/buyers/")
-        _, crops = api_call("GET", "/crops/available")
-
-        if buyers.get("data") and crops.get("data"):
-            buyer_df = pd.DataFrame(buyers["data"])
-            crop_df = pd.DataFrame(crops["data"])
-
-            buyer_options = {
-                f"{row['name']} (ID: {row['id']})": row["id"]
-                for _, row in buyer_df.iterrows()
+            data = {
+                "farmer_name": farmer_name,
+                "farmer_contact": farmer_contact,
+                "crop_name": crop_name,
+                "description": description,
+                "available_quantity": available_quantity,
+                "price_per_unit": price_per_unit,
+                "unit": unit,
             }
-            crop_options = {
-                f"{row['crop_name']} - ${row['price_per_unit']}/{row['unit']}": row
-                for _, row in crop_df.iterrows()
-            }
+            response = api_call("POST", "/crops/", data)
+            if response and response.get("Success"):
+                st.success(f"Crop '{crop_name}' listed successfully!")
+            st.rerun()
 
-            with st.form("purchase_form"):
-                buyer = st.selectbox("Select Buyer", list(buyer_options.keys()))
-                crop = st.selectbox("Select Crop", list(crop_options.keys()))
+# ====================================================================
+# --- TAB 3: VIEW ALL ORDERS ---
+# ====================================================================
 
-                if crop:
-                    crop_info = crop_options[crop]
-                    st.info(
-                        f"Available: {crop_info['available_quantity']} {crop_info['unit']}"
-                    )
-                    quantity = st.number_input(
-                        "Quantity",
-                        min_value=0.01,
-                        max_value=float(crop_info["available_quantity"]),
-                    )
+with tab3:
+    st.subheader("All Purchase Orders")
 
-                    if quantity > 0:
-                        total = quantity * crop_info["price_per_unit"]
-                        st.write(f"**Total: ${total:.2f}**")
+    order_response = api_call("GET", "/orders/")
 
-                if st.form_submit_button("Complete Purchase"):
-                    if buyer and crop and quantity > 0:
-                        data = {
-                            "buyer_id": buyer_options[buyer],
-                            "crop_id": crop_info["id"],
-                            "quantity_purchased": quantity,
-                            "price_per_unit": crop_info["price_per_unit"],
-                        }
-                        status, response = api_call("POST", "/orders/purchase", data)
-                        if status == 200:
-                            st.success("Purchase completed!")
-                        else:
-                            st.error(
-                                f"Error: {response.get('detail', 'Unknown error')}"
-                            )
-        else:
-            st.warning("Please register buyers and add crops first.")
+    if order_response and order_response.get("Success") and order_response.get("data"):
+        df = pd.DataFrame(order_response["data"])
+        if "crops" in df.columns:
+            df["Crop Name"] = df["crops"].apply(
+                lambda x: get_nested_crop_detail(x, "crop_name")
+            )
+            df["Unit"] = df["crops"].apply(lambda x: get_nested_crop_detail(x, "unit"))
 
-    with tab2:
-        # View orders by buyer
-        _, buyers = api_call("GET", "/buyers/")
-        if buyers.get("data"):
-            buyer_df = pd.DataFrame(buyers["data"])
-            buyer_options = {
-                f"{row['name']} (ID: {row['id']})": row["id"]
-                for _, row in buyer_df.iterrows()
-            }
-
-            selected_buyer = st.selectbox(
-                "Select Buyer to View Orders", list(buyer_options.keys())
+        if "ordered_at" in df.columns:
+            df["ordered_at"] = pd.to_datetime(df["ordered_at"]).dt.strftime(
+                "%Y-%m-%d %H:%M"
             )
 
-            if st.button("Load Orders"):
-                buyer_id = buyer_options[selected_buyer]
-                status, orders = api_call("GET", f"/orders/buyer/{buyer_id}")
+        df.rename(
+            columns={
+                "ordered_at": "Order Date",
+                "quantity_purchased": "Quantity",
+                "total_price": "Total Paid ($)",
+                "buyer_name": "Buyer Name",
+                "buyer_contact": "Buyer Contact",
+            },
+            inplace=True,
+        )
 
-                if orders.get("data"):
-                    df = pd.DataFrame(orders["data"])
-                    st.dataframe(df, use_container_width=True)
-                    if "total_price" in df.columns:
-                        st.metric("Total Spent", f"${df['total_price'].sum():.2f}")
-                else:
-                    st.info("No orders found.")
-
-st.markdown("---")
-st.markdown("© 2024 Crop Management System")
+        st.dataframe(
+            df[
+                [
+                    "Order Date",
+                    "Buyer Name",
+                    "Crop Name",
+                    "Quantity",
+                    "Unit",
+                    "Total Paid ($)",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No purchase orders found yet.")

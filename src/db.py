@@ -2,6 +2,7 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_KEY")
@@ -9,23 +10,22 @@ KEY = os.getenv("SUPABASE_KEY")
 
 class DatabaseManager:
     """
-    Manages all direct interaction with the Supabase database.
-    Standardizes responses for the logic layer.
+    Manages all direct interaction with the Supabase database for the simple marketplace.
     """
 
     def __init__(self):
+        # Initialize Supabase client
         self.supabase: Client = create_client(URL, KEY)
 
-    # --- Helper to process standard table responses ---
-    def _process_response(self, func, *args, **kwargs):
-        """Standardizes the response structure for table operations, handling exceptions."""
+    def _process_response(self, func_with_execute, *args, **kwargs):
+        """
+        Standardizes the response structure and handles exceptions.
+        'func_with_execute' must be a callable method (e.g., query.execute or rpc_call.execute).
+        """
         try:
-            response = func(*args, **kwargs).execute()
-
-            if response.error:
-                raise Exception(
-                    response.error.get("message", "Database operation failed")
-                )
+            response = func_with_execute(*args, **kwargs)
+            if hasattr(response, "error") and response.error is not None:
+                raise Exception(str(response.error))
 
             return {
                 "Success": True,
@@ -34,131 +34,54 @@ class DatabaseManager:
             }
 
         except Exception as e:
+            print(f"Postgres Error Details: {e}")  # Log to console
             return {
                 "Success": False,
-                "message": "Database error occurred.",
+                "message": "Transaction Failed. See console for error details.",
                 "error": str(e),
             }
-
-    # ====================================================================
-    # --- 👨‍🌾 FARMER TABLE OPERATIONS ---
-    # ====================================================================
-
-    def create_farmer(self, name, email, contact_number):
-        data = {"name": name, "email": email, "contact_number": contact_number}
-        return self._process_response(self.supabase.table("farmers").insert, data)
-
-    def get_all_farmers(self):
-        return self._process_response(self.supabase.table("farmers").select, "*")
-
-    def delete_farmer(self, farmer_id):
-        return self._process_response(
-            self.supabase.table("farmers").delete().eq, "id", farmer_id
-        )
-
-    # ====================================================================
-    # --- 🛒 BUYER TABLE OPERATIONS ---
-    # ====================================================================
-
-    def create_buyer(self, name, email, contact_number):
-        data = {"name": name, "email": email, "contact_number": contact_number}
-        return self._process_response(self.supabase.table("buyers").insert, data)
-
-    def get_all_buyers(self):
-        return self._process_response(self.supabase.table("buyers").select, "*")
-
-    def delete_buyer(self, buyer_id):
-        return self._process_response(
-            self.supabase.table("buyers").delete().eq, "id", buyer_id
-        )
 
     # ====================================================================
     # --- 🌾 CROP TABLE OPERATIONS ---
     # ====================================================================
 
-    def create_crop_listing(
-        self,
-        farmer_id,
-        crop_name,
-        description,
-        available_quantity,
-        price_per_unit,
-        unit,
-    ):
-        data = {
-            "farmer_id": farmer_id,
-            "crop_name": crop_name,
-            "description": description,
-            "available_quantity": available_quantity,
-            "price_per_unit": price_per_unit,
-            "unit": unit,
-        }
-        return self._process_response(self.supabase.table("crops").insert, data)
+    def create_crop_listing(self, data: dict):
+        """Creates a new crop listing."""
+        query = self.supabase.table("crops").insert(data)
+        return self._process_response(query.execute)
 
     def get_all_available_crops(self):
-        return self._process_response(
-            self.supabase.table("crops").select("*, farmers(name)").gt,
-            "available_quantity",
-            0,
-        )
+        """Retrieves all crops with available quantity > 0."""
 
-    def get_crops_by_farmer(self, farmer_id):
-        return self._process_response(
-            self.supabase.table("crops").select("*").eq, "farmer_id", farmer_id
+        # Build the full query object
+        query_builder = (
+            self.supabase.table("crops").select("*").gt("available_quantity", 0)
         )
-
-    def update_crop_details(self, crop_id, price_per_unit=None, description=None):
-        data = {}
-        if price_per_unit is not None:
-            data["price_per_unit"] = price_per_unit
-        if description:
-            data["description"] = description
-        return self._process_response(
-            self.supabase.table("crops").update(data).eq, "id", crop_id
-        )
-
-    def delete_crop_listing(self, crop_id):
-        return self._process_response(
-            self.supabase.table("crops").delete().eq, "id", crop_id
-        )
+        return self._process_response(query_builder.execute)
 
     # ====================================================================
     # --- 💰 ORDER TABLE OPERATIONS (RPC) ---
     # ====================================================================
 
-    def process_order(self, buyer_id, crop_id, quantity_purchased, total_price):
-        # Calls the atomic SQL stored procedure via RPC
+    def get_all_orders(self):
+        """Retrieves all orders with joined crop details."""
+        # Build the full query object
+        query = self.supabase.table("orders").select("*, crops(crop_name, unit)")
+        return self._process_response(query.execute)
+
+    def process_order(self, crop_id, buyer_name, buyer_contact, quantity, total_price):
+        """Uses the atomic SQL function with the new unique name via RPC."""
+
         params = {
-            "p_buyer_id": buyer_id,
-            "p_crop_id": crop_id,
-            "p_quantity_purchased": quantity_purchased,
-            "p_total_price": total_price,
+            "p_crop_id": int(crop_id),
+            "p_buyer_name": str(buyer_name),
+            "p_buyer_contact": str(buyer_contact),
+            "p_quantity_purchased": float(quantity),
+            "p_total_price": float(total_price),
         }
-        try:
-            response = self.supabase.rpc("process_order", params).execute()
-            if response.error:
-                raise Exception(response.error.get("message", "SQL procedure failed"))
-            return {
-                "Success": True,
-                "message": "Procedure executed successfully.",
-                "data": response.data,
-            }
-        except Exception as e:
-            return {
-                "Success": False,
-                "message": "Purchase failed at the database level.",
-                "error": str(e),
-            }
+        rpc_call = self.supabase.rpc("marketplace_process_order", params)
 
-    def get_orders_by_buyer(self, buyer_id):
-        return self._process_response(
-            self.supabase.table("orders").select("*, crops(crop_name, unit)").eq,
-            "buyer_id",
-            buyer_id,
-        )
+        return self._process_response(rpc_call.execute)
 
-    def get_orders_for_farmer(self, farmer_id):
-        # Calls the custom analytical SQL function/procedure via RPC for sales reports
-        return self._process_response(
-            self.supabase.rpc, "get_farmer_orders_report", {"p_farmer_id": farmer_id}
-        )
+
+db_manager = DatabaseManager()
