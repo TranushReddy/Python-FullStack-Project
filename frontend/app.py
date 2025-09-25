@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 API_BASE_URL = "http://localhost:8000"
 
 st.set_page_config(
-    page_title="Simplified Crop Marketplace",
+    page_title=" Crop Marketplace",
     layout="wide",
 )
 
@@ -54,7 +54,7 @@ def get_nested_crop_detail(row_data, key: str) -> str:
 
 # --- APPLICATION LAYOUT ---
 
-st.title("🌾 Simple Crop Marketplace")
+st.title("🌾 Crop Marketplace")
 st.markdown("A direct-to-consumer platform for crop listing and purchasing.")
 
 tab1, tab2, tab3 = st.tabs(["🛒 Buy Crops", "👨‍🌾 List a Crop", "📦 View All Orders"])

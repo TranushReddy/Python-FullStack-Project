@@ -8,6 +8,7 @@ from src.logic import CropMarketplaceManager, OrderManager
 # -----------------------------------------------------------App Setup------------------------------------------------
 app = FastAPI(title="Simplified Crop Marketplace API", version="1.0")
 
+
 # ------------------------------------------------------------CORS Middleware------------------------------------------------
 app.add_middleware(
     CORSMiddleware,

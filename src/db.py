@@ -34,7 +34,7 @@ class DatabaseManager:
             }
 
         except Exception as e:
-            print(f"Postgres Error Details: {e}")  # Log to console
+            print(f"Postgres Error Details: {e}")
             return {
                 "Success": False,
                 "message": "Transaction Failed. See console for error details.",
