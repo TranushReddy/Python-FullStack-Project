@@ -211,7 +211,6 @@ class OrderManager:
         # Business Logic: Calculate total price
         total_price = quantity_purchased * price_per_unit
 
-        # Database Logic: Call the atomic 'process_order' procedure
         response = self.db.process_order(
             buyer_id, crop_id, quantity_purchased, total_price
         )
@@ -223,7 +222,6 @@ class OrderManager:
                 "data": response.get("data"),
             }
         else:
-            # The DB error will likely contain the 'Insufficient stock' message
             return {
                 "Success": False,
                 "message": "Purchase failed. Check stock or details.",
