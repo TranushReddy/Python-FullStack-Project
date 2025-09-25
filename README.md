@@ -1,30 +1,36 @@
-# Crop Mangement System
+# 🌾 Crop Marketplace API
 
-A simple and intuitive crop management system designed to connect farmers and buyers. This application empowers farmers to list their produce and enables buyers to purchase crops directly. The project showcases a complete full-stack application using Python, Supabase, Streamlit, and FastAPI.
+A streamlined, **full-stack crop marketplace system** that connects farmers directly with buyers. This **FastAPI**-powered backend provides robust APIs for crop listing, inventory management, and order processing, complemented by a modern **Streamlit** frontend interface.
 
-## Features
+---
 
-## 👨‍🌾 Farmer-side Features
+## ✨ Features
 
-- **Crop Management** : Farmers can list, view, update, and delete their crop listings.
+### 👨‍🌾 Farmer-side Features
 
-- **Inventory Tracking**: The system automatically updates the available crop quantity after each sale.
+- **Crop Listing Management**: Create detailed crop listings with pricing, quantity, and descriptions.
+- **Real-time Inventory**: Automatic stock updates after each sale transaction.
+- **Flexible Pricing**: Set custom price per unit with various measurement units.
+- **Contact Integration**: Include farmer contact information for direct communication.
 
-- **Price and Details**: Farmers can set the price per unit and provide detailed descriptions for their produce.
+### 🛒 Buyer-side Features
 
-- **Sales History**: View a history of all crops sold, including quantity and total revenue.
+- **Crop Discovery**: Browse all available crops with detailed information.
+- **Instant Purchase**: Place orders with automatic inventory validation and updates.
+- **Order Tracking**: Complete order history with crop details and pricing.
+- **Stock Validation**: Real-time stock checking prevents overselling.
 
-## 🛒 Buyer-side Features
+### 🔧 Technical Features
 
-- **Crop Discovery**: Buyers can browse and search for crops based on type, price, or availability.
+- **RESTful API**: Clean, documented **FastAPI** endpoints.
+- **Database Transactions**: Atomic order processing with **Supabase RPC** functions.
+- **CORS Support**: Cross-origin requests enabled for web frontend integration.
+- **Error Handling**: Comprehensive error responses with appropriate HTTP status codes.
+- **Data Validation**: **Pydantic** models ensure data integrity.
 
-- **Direct Purchase**: The ability to immediately purchase a specified quantity of a crop.
+---
 
-- **Order Tracking**: A dashboard to monitor all placed orders.
-
-- **Simple Interface**: A clean and modern web interface for a smooth user experience.
-
-## Project Structure
+## 🏗️ Project Structure
 
 CROP-MANAGEMENT-SYSTEM/
 |--- src/ # core application logic
@@ -76,38 +82,29 @@ pip install -r requirements.txt
 
 ```sql
 
-CREATE TABLE farmers (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    email VARCHAR(255) UNIQUE,
-    contact_number VARCHAR(20)
-);
-
-CREATE TABLE buyers (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    email VARCHAR(255) UNIQUE,
-    contact_number VARCHAR(20)
-);
-
+-- Create crops table
 CREATE TABLE crops (
-    id SERIAL PRIMARY KEY,
-    farmer_id INTEGER REFERENCES farmers(id),
-    crop_name VARCHAR(255),
-    description TEXT,
-    available_quantity DECIMAL,
-    price_per_unit DECIMAL,
-    unit VARCHAR(50)
+    id SERIAL PRIMARY KEY,
+    farmer_name VARCHAR(255) NOT NULL,
+    farmer_contact VARCHAR(50),
+    crop_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    available_quantity DECIMAL(10,2) NOT NULL CHECK (available_quantity >= 0),
+    price_per_unit DECIMAL(10,2) NOT NULL CHECK (price_per_unit > 0),
+    unit VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create orders table
 CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    buyer_id INTEGER REFERENCES buyers(id),
-    crop_id INTEGER REFERENCES crops(id),
-    quantity_purchased DECIMAL,
-    total_price DECIMAL
+    id SERIAL PRIMARY KEY,
+    crop_id INTEGER REFERENCES crops(id) ON DELETE CASCADE,
+    buyer_name VARCHAR(255) NOT NULL,
+    buyer_contact VARCHAR(50) NOT NULL,
+    quantity_purchased DECIMAL(10,2) NOT NULL CHECK (quantity_purchased > 0),
+    total_price DECIMAL(10,2) NOT NULL,
+    ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
 ```
 
 3.  Get Your Credentials:
@@ -131,32 +128,44 @@ SUPABASE_KEY=eeebwcbbcekjdsbsjcjj....
 
 - streamlit run frontend/app.py
 
-- The app will open in your browser at `http://localhost:5000`
+- The app will open in your browser at `http://localhost:8501`
 
 ## FastAPI Backend
 
 - cd api
-- python main.py
+- uvicorn api.main:app --reload --port 8000
 
-- The app will be available at `http://localhost:5000`
+- API will be available at: `http://127.0.0.1:8000`
 
 ## How to Use Application
 
 ## As a Farmer:
 
-- You can log in to your dashboard.
+- Navigate to the "List a Crop" tab.
 
-- From there, you can create new crop listings, specifying details like quantity, price, and description.
+- Fill in crop details including name, quantity, price, and unit.
 
-- Your dashboard will also show a summary of your active listings and past sales.
+- Add optional description and contact information.
+
+- Submit the listing to make it available for purchase.
 
 ## As a Buyer:
 
-- You will be taken to the crop discovery page.
+- Browse available crops in the "Buy Crops" tab.
 
-- You can browse available crops, search by name, and view details.
+- Select desired crop and specify quantity to purchase.
 
-- To make a purchase, you'll select a crop, specify the desired quantity, and confirm the order. The system will automatically update the crop's available quantity in the database.
+- Enter buyer details (name and contact).
+
+- Confirm purchase - inventory updates automatically.
+
+## Order Tracking
+
+- View all completed orders in the "View All Orders" tab.
+
+- See buyer details, crop information, quantities, and total prices.
+
+- Orders include timestamps for tracking purposes.
 
 ## Technical Details
 
@@ -192,19 +201,21 @@ SUPABASE_KEY=eeebwcbbcekjdsbsjcjj....
 
 ## Fucture Enhancements
 
-- **User Authentication**: Implement robust user accounts and secure login features to ensure only registered farmers and buyers can access the application.
+- **Authentication**: JWT-based user authentication and role management.
 
-- **Notifications**: Add a system to send notifications to farmers when a new order is placed and to buyers when their order status changes.
+- **Payment Processing**: Stripe/PayPal integration for secure transactions.
 
-- **Payment Gateway**: Integrate a payment service like Stripe or PayPal to enable direct, secure transactions within the application.
+- **Image Upload**: Crop photo support with cloud storage.
 
-- **Geospatial Data**: Use location data to allow buyers to search for crops by proximity and provide farmers with a better understanding of local market demand.
+- **Notification System**: Email/SMS alerts for orders and stock updates.
 
-- **Data Analytics**: Create dashboards with visual reports for farmers, showing sales trends, total revenue, and popular crops.
+- **Advanced Search**: Filtering by location, price range, organic certification.
 
-- **Ratings and Reviews**: Implement a system where buyers can rate and review crops and farmers to build trust and credibility in the marketplace.
+- **Mobile API**: Enhanced endpoints for mobile app development.
 
-- **Mobile App**: Develop a mobile version of the application using a framework like React Native or Flutter to provide a more convenient experience for users on the go.
+- **Analytics Dashboard**: Sales trends and revenue insights.
+
+- **Review System**: Buyer ratings and farmer reviews.
 
 ## support
 
