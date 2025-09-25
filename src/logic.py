@@ -7,7 +7,6 @@ from src.db import DatabaseManager
 class FarmerManager:
 
     def __init__(self):
-        """Initializes the database manager instance."""
         self.db = DatabaseManager()
 
     # --- Create ----
@@ -38,27 +37,6 @@ class FarmerManager:
     def get_farmers(self):
         """Retrieves all farmers from the database."""
         return self.db.get_all_farmers()
-
-    # -- Update ----
-    def modify_farmer(self, farmer_id, name=None, email=None, contact_number=None):
-        """Updates an existing farmer's details."""
-        if not farmer_id:
-            return {"Success": False, "message": "Farmer ID is required for update."}
-
-        response = self.db.update_farmer(farmer_id, name, email, contact_number)
-
-        if response.get("Success"):
-            return {
-                "Success": True,
-                "message": "Farmer updated successfully.",
-                "data": response.get("data"),
-            }
-        else:
-            return {
-                "Success": False,
-                "message": "Failed to update farmer.",
-                "error": response.get("error"),
-            }
 
     # --- Delete ----
     def remove_farmer(self, farmer_id):
@@ -119,6 +97,27 @@ class BuyerManager:
         """Retrieves all buyers from the database."""
         return self.db.get_all_buyers()
 
+    # --- Delete Buyer ----
+    def remove_buyer(self, buyer_id):
+        """Deletes a buyer from the database."""
+        if not buyer_id:
+            return {"Success": False, "message": "Buyer ID is required for deletion."}
+
+        response = self.db.delete_buyer(buyer_id)
+
+        if response.get("Success"):
+            return {
+                "Success": True,
+                "message": "Buyer deleted successfully.",
+                "data": response.get("data"),
+            }
+        else:
+            return {
+                "Success": False,
+                "message": "Failed to delete buyer.",
+                "error": response.get("error"),
+            }
+
 
 # ====================================================================
 # --- 🌾 CROP LOGIC ---
@@ -138,11 +137,10 @@ class CropManager:
         price_per_unit,
         unit,
     ):
-        """Creates a new crop listing using the SQL function."""
+        """Creates a new crop listing."""
         if not all([farmer_id, crop_name, available_quantity, price_per_unit]):
             return {"Success": False, "message": "Missing required crop details."}
 
-        # Calls the SQL function via DB layer
         response = self.db.create_crop_listing(
             farmer_id, crop_name, description, available_quantity, price_per_unit, unit
         )
@@ -208,7 +206,6 @@ class OrderManager:
         if quantity_purchased <= 0:
             return {"Success": False, "message": "Quantity must be greater than zero."}
 
-        # Business Logic: Calculate total price
         total_price = quantity_purchased * price_per_unit
 
         response = self.db.process_order(

@@ -1,24 +1,22 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import sys
-import os
 
-# Set up the path to include the 'src' directory for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Note: sys and os imports for path manipulation are assumed to be handled
+# or are not needed if the environment path is set up correctly outside this file.
 from src.logic import FarmerManager, BuyerManager, CropManager, OrderManager
 
 # -----------------------------------------------------------App Setup------------------------------------------------
 app = FastAPI(title="Crop Management API", version="1.0")
 
-# ------------------------------------------------------------Allow Frontend(Streamlit/React) to call the API------------------------------------------------
+# ------------------------------------------------------------CORS Middleware------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # allow all methods
-    allow_headers=["*"],  # allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Creating Manager Instances (Business logic)
@@ -31,9 +29,7 @@ order_manager = OrderManager()
 
 
 class CROPCreate(BaseModel):
-    """
-    Schema for creating a new crop listing.
-    """
+    """Schema for creating a new crop listing."""
 
     farmer_id: int
     crop_name: str
@@ -44,18 +40,14 @@ class CROPCreate(BaseModel):
 
 
 class CROPUpdate(BaseModel):
-    """
-    Schema for updating an existing crop listing.
-    """
+    """Schema for updating an existing crop listing."""
 
     price_per_unit: float = None
     description: str = None
 
 
 class PurchaseRequest(BaseModel):
-    """
-    Schema for a buyer initiating a purchase.
-    """
+    """Schema for a buyer initiating a purchase."""
 
     buyer_id: int
     crop_id: int
@@ -74,7 +66,7 @@ class UserCreate(BaseModel):
 
 @app.get("/", tags=["App Status"])
 def home():
-    """check if the API is running"""
+    """Check if the API is running."""
     return {"message": "Crop Management API is running."}
 
 
@@ -97,19 +89,6 @@ def create_crop_listing(crop: CROPCreate):
     else:
         raise HTTPException(
             status_code=400, detail=response.get("message") or response.get("error")
-        )
-
-
-@app.get("/crops/farmer/{farmer_id}", tags=["Crops"])
-def get_crops_for_farmer(farmer_id: int):
-    """Fetch all crops listed by a specific farmer."""
-    response = crop_manager.get_crops_for_farmer(farmer_id)
-    if response.get("Success"):
-        return response
-    else:
-        raise HTTPException(
-            status_code=404,
-            detail=response.get("message") or "Crops not found for farmer.",
         )
 
 
@@ -141,6 +120,19 @@ def update_crop_listing(crop_id: int, crop: CROPUpdate):
         )
 
 
+@app.get("/crops/farmer/{farmer_id}", tags=["Crops"])
+def get_crops_for_farmer(farmer_id: int):
+    """Fetch all crops listed by a specific farmer."""
+    response = crop_manager.get_crops_for_farmer(farmer_id)
+    if response.get("Success"):
+        return response
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=response.get("message") or "Crops not found for farmer.",
+        )
+
+
 @app.delete("/crops/{crop_id}", tags=["Crops"])
 def remove_crop_listing(crop_id: int):
     """Delete a crop listing by its ID."""
@@ -160,6 +152,7 @@ def remove_crop_listing(crop_id: int):
 def initiate_purchase(request: PurchaseRequest):
     """
     Handles the core business transaction: processes the order and atomically
+    updates the crop's available quantity using the SQL stored procedure.
     """
     response = order_manager.handle_purchase(
         request.buyer_id,
@@ -263,7 +256,7 @@ def list_buyers():
 @app.delete("/farmers/{farmer_id}", tags=["Farmers"])
 def delete_farmer(farmer_id: int):
     """Delete a farmer by their ID."""
-    response = farmer_manager.delete_farmer(farmer_id)
+    response = farmer_manager.remove_farmer(farmer_id)
     if response.get("Success"):
         return response
     else:
@@ -282,9 +275,3 @@ def delete_buyer(buyer_id: int):
         raise HTTPException(
             status_code=404, detail=response.get("message") or "Buyer not found."
         )
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=5000, reload=True)
